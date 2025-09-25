@@ -1,0 +1,144 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><meta name='viewport' content='width=device-width, initial-scale=1'/>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pedidos Café</title>
+<style>
+body { font-family: Arial; background: #fff8f0; padding: 20px; }
+h1 { text-align: center; color: #8b2e2e; }
+h2 { text-align: center; color: #8b2e2e; }
+form { max-width: 400px; margin: 20px auto; padding: 20px; background: #fff; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+label { display:block; margin-top:10px; font-weight:bold; }
+input, select, textarea { width:100%; padding:8px; margin-top:5px; border-radius:5px; border:1px solid #ccc; }
+button { background:#8b2e2e; color:white; padding:10px; margin-top:15px; width:100%; border:none; border-radius:5px; cursor:pointer; }
+button:hover { background:#a13c3c; }
+.msg { text-align:center; font-weight:bold; margin-top:20px; font-size:16px; color:#333; }
+#resumen { max-width: 400px; margin: 20px auto; padding: 10px; background: #fff4f0; border-radius: 8px; }
+.resumen-item { border-bottom: 1px solid #ccc; padding:5px 0; }
+</style>
+</head>
+<body>
+<h1>Cofee Dreams</h1>
+<h2>Formulario Solicitud de Producto</h2>
+
+<form id="pedidoForm">
+  <label>Nombre del cliente</label>
+  <input type="text" id="nombre" required>
+
+  <label>Dirección de entrega</label>
+  <input type="text" id="direccion" required>
+
+  <label>Fecha de entrega</label>
+  <input type="date" id="fechaEntrega" required>
+
+  <label>Producto</label>
+  <select id="producto">
+    <option value="Café individual">Café individual - $60</option>
+    <option value="Café + Pastel">Café + Pastel - $120</option>
+    <option value="Pastel">Pastel - $60</option>
+  </select>
+
+  <label>Cantidad</label>
+  <input type="number" id="cantidad" value="1" min="1">
+
+  <label>Comentarios de referencia</label>
+  <textarea id="comentarios" rows="3" placeholder="Ej. Dejar en portería, tocar timbre..."></textarea>
+
+  <button type="button" id="agregarPedido">Agregar Pedido</button>
+  <button type="button" id="enviarPedidos">Enviar Todos los Pedidos</button>
+</form>
+
+<div id="resumen"></div>
+<div class="msg" id="msg"></div>
+
+<script>
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxNes97vClzV8lQqXfAynOxHo2nwFYDUXzDmomqvT8u_ACAnBtClKct1C7_u0SNl735bw/exec";
+
+let pedidosTemp = []; // array temporal de pedidos
+
+// 🔹 Establecer fecha mínima (hoy) en el input
+const hoy = new Date().toISOString().split("T")[0];
+document.getElementById("fechaEntrega").setAttribute("min", hoy);
+
+function calcularTotal(producto, cantidad){
+  let precio = 0;
+  if(producto === "Café individual") precio = 60;
+  if(producto === "Café + Pastel") precio = 120;
+  if(producto === "Pastel") precio = 60;
+  return precio * cantidad;
+}
+
+// Función para actualizar el resumen en pantalla
+function actualizarResumen(){
+  const div = document.getElementById("resumen");
+  if(pedidosTemp.length === 0){
+    div.innerHTML = "";
+    return;
+  }
+  let html = "<h3>Resumen de Pedidos:</h3>";
+  pedidosTemp.forEach((p,i) => {
+    html += `<div class="resumen-item">
+      ${i+1}. <b>${p.nombre}</b> - ${p.producto} x ${p.cantidad} → $${p.total}<br>
+      📍 ${p.direccion}<br>
+      📅 Entrega: ${p.fechaEntrega}<br>
+      📝 ${p.comentarios || "Sin comentarios"}
+      <button onclick="eliminarTemp(${i})" style="float:right;">Eliminar</button>
+    </div>`;
+  });
+  const totalGeneral = pedidosTemp.reduce((acc,p)=>acc+p.total,0);
+  html += `<div style="font-weight:bold; margin-top:5px;">Total General: $${totalGeneral}</div>`;
+  div.innerHTML = html;
+}
+
+// Eliminar pedido temporal
+function eliminarTemp(index){
+  pedidosTemp.splice(index,1);
+  actualizarResumen();
+}
+
+// Agregar pedido al resumen temporal
+document.getElementById("agregarPedido").addEventListener("click", ()=>{
+  const nombre = document.getElementById("nombre").value.trim();
+  const direccion = document.getElementById("direccion").value.trim();
+  const fechaEntrega = document.getElementById("fechaEntrega").value;
+  if(nombre === "" || direccion === "" || fechaEntrega === ""){
+    alert("Ingrese nombre, dirección y fecha de entrega");
+    return;
+  }
+  const producto = document.getElementById("producto").value;
+  const cantidad = parseInt(document.getElementById("cantidad").value);
+  const comentarios = document.getElementById("comentarios").value.trim();
+  const total = calcularTotal(producto, cantidad);
+
+  pedidosTemp.push({nombre, direccion, fechaEntrega, producto, cantidad, comentarios, total});
+  actualizarResumen();
+  document.getElementById("cantidad").value = 1;
+  document.getElementById("comentarios").value = "";
+});
+
+// Enviar todos los pedidos
+document.getElementById("enviarPedidos").addEventListener("click", ()=>{
+  if(pedidosTemp.length === 0){
+    alert("No hay pedidos para enviar");
+    return;
+  }
+  // Enviar cada pedido al SCRIPT_URL
+  Promise.all(pedidosTemp.map(pedido => 
+    fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify(pedido) })
+      .then(res => res.text())
+  ))
+  .then(responses => {
+    document.getElementById("msg").innerHTML = `✅ Se enviaron ${pedidosTemp.length} pedidos correctamente.`;
+    pedidosTemp = [];
+    actualizarResumen();
+    document.getElementById("pedidoForm").reset();
+    // 🔹 volver a aplicar min después de reset
+    document.getElementById("fechaEntrega").setAttribute("min", hoy);
+  })
+  .catch(err => alert("Error al enviar pedidos: " + err));
+});
+</script>
+</body>
+</html>
